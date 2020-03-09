@@ -246,6 +246,7 @@ else:
 
     class BaseMetrics(BaseView):
         @expose("/")
+        @has_access
         def index(self):
             return Response(generate_latest(), mimetype="text/plain")
 
