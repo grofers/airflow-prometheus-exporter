@@ -199,11 +199,11 @@ class MetricsCollector(object):
 
                 interval = (planned_start_date - dag.execution_date).total_seconds() / 3600.0
                 if interval <= 1:
-                    interval_bucket = "less than an hour"
+                    interval_bucket = "<1h"
                 elif interval > 1 and interval <= 6:
-                    interval_bucket = "between 1 and 6 hours"
+                    interval_bucket = "1-6h"
                 else:
-                    interval_bucket = "greater than 6 hours"
+                    interval_bucket = ">6h"
 
                 dag_schedule_delay = (dag.start_date - planned_start_date).total_seconds()
                 airflow_dag_schedule_delay.add_metric([dag.dag_id, interval_bucket], dag_schedule_delay)
