@@ -35,17 +35,17 @@ def session_scope(session):
 def get_dag_states():
     """Number of dag run states for the current hour"""
 
-    hour_now = dt.datetime.now().replace(
+    hour_start = dt.datetime.now().replace(
         minute=0, second=0, microsecond=0, tzinfo=pytz.UTC
     )
-    hour_later = hour_now + dt.timedelta(hours=1)
+    hour_end = hour_start + dt.timedelta(hours=1)
 
     with session_scope(Session) as session:
         dag_status_query = (
             session.query(
                 DagRun.dag_id, DagRun.state, func.count(DagRun.state).label("count"),
             )
-            .filter(DagRun.execution_date.between(hour_now, hour_later))
+            .filter(DagRun.execution_date.between(hour_start, hour_end))
             .group_by(DagRun.dag_id, DagRun.state)
             .subquery()
         )
@@ -190,14 +190,23 @@ class MetricsCollector(object):
         airflow_dag_schedule_delay = GaugeMetricFamily(
             "airflow_dag_schedule_delay",
             "Airflow dag schedule delay in seconds",
-            labels=["dag_id"],
+            labels=["dag_id", "interval_bucket"],
         )
         for dag in get_dag_schedule_delays():
-            c = croniter(dag.schedule_interval, dag.execution_date)
-            planned_start_date = c.get_next(dt.datetime)
+            if dag.schedule_interval is not None:
+                c = croniter(dag.schedule_interval, dag.execution_date)
+                planned_start_date = c.get_next(dt.datetime)
 
-            dag_schedule_delay = (dag.start_date - planned_start_date).total_seconds()
-            airflow_dag_schedule_delay.add_metric([dag.dag_id], dag_schedule_delay)
+                interval = (planned_start_date - dag.execution_date).total_seconds() / 3600.0
+                if interval <= 1:
+                    interval_bucket = "less than an hour"
+                elif interval > 1 and interval <= 6:
+                    interval_bucket = "between 1 and 6 hours"
+                else:
+                    interval_bucket = "greater than 6 hours"
+
+                dag_schedule_delay = (dag.start_date - planned_start_date).total_seconds()
+                airflow_dag_schedule_delay.add_metric([dag.dag_id, interval_bucket], dag_schedule_delay)
         yield airflow_dag_schedule_delay
 
 
