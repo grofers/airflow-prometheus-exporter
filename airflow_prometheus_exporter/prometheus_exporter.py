@@ -9,8 +9,8 @@ from contextlib import contextmanager
 
 import pytz
 from croniter import croniter
-from sqlalchemy import and_, func
 from flask import request, Response
+from sqlalchemy import and_, or_, func
 from flask_admin import BaseView, expose
 from prometheus_client.core import GaugeMetricFamily
 from prometheus_client import generate_latest, REGISTRY
@@ -45,7 +45,12 @@ def get_dag_states():
             session.query(
                 DagRun.dag_id, DagRun.state, func.count(DagRun.state).label("count"),
             )
-            .filter(DagRun.execution_date.between(hour_start, hour_end))
+            .filter(
+                or_(
+                    DagRun.start_date.between(hour_start, hour_end),
+                    DagRun.end_date.between(hour_start, hour_end),
+                )
+            )
             .group_by(DagRun.dag_id, DagRun.state)
             .subquery()
         )
@@ -197,7 +202,9 @@ class MetricsCollector(object):
                 c = croniter(dag.schedule_interval, dag.execution_date)
                 planned_start_date = c.get_next(dt.datetime)
 
-                interval = (planned_start_date - dag.execution_date).total_seconds() / 3600.0
+                interval = (
+                    planned_start_date - dag.execution_date
+                ).total_seconds() / 3600.0
                 if interval <= 1:
                     interval_bucket = "<1h"
                 elif interval > 1 and interval <= 6:
@@ -205,8 +212,12 @@ class MetricsCollector(object):
                 else:
                     interval_bucket = ">6h"
 
-                dag_schedule_delay = (dag.start_date - planned_start_date).total_seconds()
-                airflow_dag_schedule_delay.add_metric([dag.dag_id, interval_bucket], dag_schedule_delay)
+                dag_schedule_delay = (
+                    dag.start_date - planned_start_date
+                ).total_seconds()
+                airflow_dag_schedule_delay.add_metric(
+                    [dag.dag_id, interval_bucket], dag_schedule_delay
+                )
         yield airflow_dag_schedule_delay
 
 
